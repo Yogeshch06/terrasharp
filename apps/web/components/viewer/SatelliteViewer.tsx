@@ -56,14 +56,17 @@ export default function SatelliteViewer({ jobId }: Props) {
         onMouseLeave={() => { dragging.current = false; }}
         onTouchMove={onTouchMove}
       >
-        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/40 text-sm">
-          <div className="text-center space-y-2">
-            <div className="text-5xl">🗺️</div>
-            <div>Before / After viewer</div>
-            <div className="text-xs">({bandLabel} · drag divider to compare)</div>
-          </div>
-        </div>
-
+        <img
+          src={buildDownloadUrl(jobId, "preview_before.png")}
+          alt="Bicubic RGB preview"
+          className="absolute inset-0 w-full h-full object-contain"
+        />
+        <img
+          src={buildDownloadUrl(jobId, "preview_after.png")}
+          alt="SR enhanced RGB preview"
+          className="absolute inset-0 w-full h-full object-contain"
+          style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
+        />
         <div
           className="absolute top-0 bottom-0 bg-white/20 w-px"
           style={{ left: `${sliderPos}%` }}

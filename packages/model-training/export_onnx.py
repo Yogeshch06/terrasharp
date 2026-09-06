@@ -26,6 +26,19 @@ def load_config(config_path):
         return yaml.safe_load(f)
 
 
+def resolve_path(path: str) -> str:
+    if os.path.isabs(path):
+        return os.path.abspath(path)
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(os.path.dirname(script_dir))
+    normalized_path = path.replace("/", os.sep)
+    repo_relative_prefix = os.path.join("packages", "model-training")
+    if normalized_path == repo_relative_prefix or normalized_path.startswith(repo_relative_prefix + os.sep):
+        return os.path.abspath(os.path.join(repo_root, normalized_path))
+    return os.path.abspath(path)
+
+
 def export():
     args = parse_args()
     config = load_config(args.config)
@@ -33,7 +46,7 @@ def export():
     m_cfg = config.get("model", {})
     e_cfg = config.get("export", {})
 
-    checkpoint_path = args.checkpoint or e_cfg.get("checkpoint_path", "packages/model-training/checkpoints/best.pth")
+    checkpoint_path = resolve_path(args.checkpoint or e_cfg.get("checkpoint_path", "packages/model-training/checkpoints/best.pth"))
     output_path = args.output or e_cfg.get("onnx_path", "terrasharp_swinir_sentinel2.onnx")
     opset_version = args.opset or e_cfg.get("opset_version", 17)
 
@@ -48,22 +61,22 @@ def export():
         upscale=m_cfg.get("upscale", 4)
     )
 
-    if os.path.exists(checkpoint_path):
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
-        state_dict = checkpoint.get("model_state_dict", checkpoint)
-        model.load_state_dict(state_dict)
-        print(f"Loaded weights from {checkpoint_path}")
+    print(f"Resolved checkpoint path: {checkpoint_path}")
+    if not os.path.isfile(checkpoint_path):
+        raise FileNotFoundError(f"Checkpoint file not found; refusing to export untrained weights: {checkpoint_path}")
+
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    model.load_state_dict(state_dict)
+    checkpoint_epoch = checkpoint.get("epoch") if isinstance(checkpoint, dict) else None
+    if checkpoint_epoch is not None:
+        print(f"Loaded checkpoint successfully from {checkpoint_path} (epoch {checkpoint_epoch})")
     else:
-        print(f"Warning: Checkpoint {checkpoint_path} not found. Exporting un-trained architecture.")
+        print(f"Loaded checkpoint successfully from {checkpoint_path}")
 
     model.eval()
 
-    dummy_input = torch.randn(1, 4, 64, 64, dtype=torch.float32)
-
-    dynamic_axes = {
-        "input": {0: "batch_size", 2: "height", 3: "width"},
-        "output": {0: "batch_size", 2: "height", 3: "width"}
-    }
+    dummy_input = torch.randn(1, 4, 256, 256, dtype=torch.float32)
 
     out_dir = os.path.dirname(output_path)
     if out_dir:
@@ -79,7 +92,7 @@ def export():
         do_constant_folding=True,
         input_names=["input"],
         output_names=["output"],
-        dynamic_axes=dynamic_axes
+        dynamo=False
     )
 
     onnx_model = onnx.load(output_path)

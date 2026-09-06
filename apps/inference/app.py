@@ -21,7 +21,7 @@ if script_dir not in sys.path:
 from config import settings
 from src.model import ONNXInferenceEngine
 from src.preprocess import normalize_reflectance, create_tiling_plan
-from src.postprocess import reassemble_tiles, compute_all_metrics
+from src.postprocess import reassemble_tiles, compute_all_metrics, save_preview_pngs
 from src.geotiff_utils import read_geotiff, write_geotiff, write_uncertainty_geotiff
 from src.copernicus import CopernicusClient
 
@@ -144,6 +144,7 @@ def run_super_resolution_pipeline(file_bytes: bytes, job_id: str) -> dict:
     )
 
     metrics = compute_all_metrics(input_norm, sr_full)
+    save_preview_pngs(job_dir, input_norm, sr_full, unc_full)
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -161,7 +162,12 @@ def run_super_resolution_pipeline(file_bytes: bytes, job_id: str) -> dict:
         "metrics": metrics,
         "download_urls": {
             "enhanced": f"/download/{job_id}/enhanced.tif",
-            "uncertainty": f"/download/{job_id}/uncertainty.tif"
+            "uncertainty": f"/download/{job_id}/uncertainty.tif",
+            "preview_before": f"/download/{job_id}/preview_before.png",
+            "preview_after": f"/download/{job_id}/preview_after.png",
+            "edge_before": f"/download/{job_id}/edge_before.png",
+            "edge_after": f"/download/{job_id}/edge_after.png",
+            "uncertainty_heatmap": f"/download/{job_id}/uncertainty_heatmap.png"
         }
     }
 
@@ -231,7 +237,12 @@ def get_job_status(job_id: str):
         "created_at": row["created_at"],
         "download_urls": {
             "enhanced": f"/download/{job_id}/enhanced.tif",
-            "uncertainty": f"/download/{job_id}/uncertainty.tif"
+            "uncertainty": f"/download/{job_id}/uncertainty.tif",
+            "preview_before": f"/download/{job_id}/preview_before.png",
+            "preview_after": f"/download/{job_id}/preview_after.png",
+            "edge_before": f"/download/{job_id}/edge_before.png",
+            "edge_after": f"/download/{job_id}/edge_after.png",
+            "uncertainty_heatmap": f"/download/{job_id}/uncertainty_heatmap.png"
         } if row["status"] == "completed" else {}
     }
 
@@ -241,7 +252,8 @@ def download_file(job_id: str, filename: str):
     file_path = os.path.join(settings.TMP_DIR, job_id, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Requested file not found.")
-    return FileResponse(file_path, filename=filename, media_type="image/tiff")
+    media_type = "image/png" if filename.lower().endswith(".png") else "image/tiff"
+    return FileResponse(file_path, filename=filename, media_type=media_type)
 
 
 if __name__ == "__main__":

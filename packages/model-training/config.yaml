@@ -23,9 +23,10 @@ dataset:
 training:
   epochs: 50
   batch_size: 8
-  lr: 0.0002
-  min_lr: 0.00001
+  lr: 0.00002
+  min_lr: 0.000001
   weight_decay: 0.0001
+  grad_clip_norm: 1.0
   checkpoint_dir: "packages/model-training/checkpoints"
   checkpoint_name: "best.pth"
   save_every: 5

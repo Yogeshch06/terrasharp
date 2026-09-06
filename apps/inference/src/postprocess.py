@@ -1,5 +1,9 @@
+import os
+import struct
+import zlib
 from typing import List, Dict, Any
 import numpy as np
+from scipy.ndimage import zoom
 
 from spectral_metrics import (
     psnr_per_band,
@@ -8,7 +12,7 @@ from spectral_metrics import (
     ndvi_preservation_score,
     ndwi_preservation_score
 )
-from edge_metrics import compute_edge_preservation
+from edge_metrics import compute_edge_preservation, get_edge_maps
 
 
 def _create_feather_mask(tile_h: int, tile_w: int, blend_width: int = 16) -> np.ndarray:
@@ -87,3 +91,70 @@ def compute_all_metrics(lr_img: np.ndarray, sr_img: np.ndarray) -> Dict[str, Any
         "ndwi_preservation": ndwi_score,
         "edge_metrics": edge_dict
     }
+
+
+def _to_uint8(data: np.ndarray) -> np.ndarray:
+    finite = data[np.isfinite(data)]
+    if finite.size == 0:
+        return np.zeros(data.shape, dtype=np.uint8)
+    low, high = np.percentile(finite, [2, 98])
+    if high <= low:
+        low = float(np.min(finite))
+        high = float(np.max(finite))
+    if high <= low:
+        return np.zeros(data.shape, dtype=np.uint8)
+    return (np.clip((data - low) / (high - low), 0.0, 1.0) * 255).astype(np.uint8)
+
+
+def _write_png(path: str, data: np.ndarray) -> None:
+    if data.ndim == 2:
+        height, width = data.shape
+        color_type = 0
+        pixels = data
+    else:
+        channels, height, width = data.shape
+        if channels != 3:
+            raise ValueError("PNG output must have one or three channels")
+        color_type = 2
+        pixels = np.moveaxis(data, 0, -1)
+
+    raw = b"".join(b"\x00" + row.tobytes() for row in pixels)
+
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload) & 0xffffffff)
+
+    png = b"\x89PNG\r\n\x1a\n"
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(raw))
+    png += chunk(b"IEND", b"")
+    with open(path, "wb") as output:
+        output.write(png)
+
+
+def _rgb_preview(image: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
+    height, width = target_shape
+    if image.shape[1:] != target_shape:
+        image = zoom(image, (1.0, height / image.shape[1], width / image.shape[2]), order=3)
+    rgb = np.stack([image[2], image[1], image[0]], axis=0)
+    return np.stack([_to_uint8(channel) for channel in rgb], axis=0)
+
+
+def _uncertainty_heatmap(uncertainty: np.ndarray) -> np.ndarray:
+    magnitude = np.mean(uncertainty, axis=0) if uncertainty.ndim == 3 else uncertainty
+    normalized = _to_uint8(magnitude).astype(np.float32) / 255.0
+    stops = np.array([[0, 0, 255], [255, 255, 0], [255, 0, 0]], dtype=np.float32)
+    positions = normalized * (len(stops) - 1)
+    lower = np.floor(positions).astype(np.int32)
+    upper = np.minimum(lower + 1, len(stops) - 1)
+    fraction = positions - lower
+    return np.moveaxis(stops[lower] * (1 - fraction[..., None]) + stops[upper] * fraction[..., None], -1, 0).astype(np.uint8)
+
+
+def save_preview_pngs(job_dir: str, input_norm: np.ndarray, sr_full: np.ndarray, unc_full: np.ndarray) -> None:
+    sr_shape = (sr_full.shape[1], sr_full.shape[2])
+    edge_before, edge_after = get_edge_maps(input_norm, sr_full)
+    _write_png(os.path.join(job_dir, "preview_before.png"), _rgb_preview(input_norm, sr_shape))
+    _write_png(os.path.join(job_dir, "preview_after.png"), _rgb_preview(sr_full, sr_shape))
+    _write_png(os.path.join(job_dir, "edge_before.png"), _to_uint8(edge_before))
+    _write_png(os.path.join(job_dir, "edge_after.png"), _to_uint8(edge_after))
+    _write_png(os.path.join(job_dir, "uncertainty_heatmap.png"), _uncertainty_heatmap(unc_full))

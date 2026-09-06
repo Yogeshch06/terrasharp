@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { buildDownloadUrl } from "@/lib/api-client";
 
 interface Props {
+  jobId: string;
   uncertaintyUrl: string;
 }
 
-export default function UncertaintyOverlay({ uncertaintyUrl }: Props) {
+export default function UncertaintyOverlay({ jobId, uncertaintyUrl }: Props) {
   const [enabled, setEnabled] = useState(false);
   const [opacity, setOpacity] = useState(0.6);
 
@@ -66,6 +68,12 @@ export default function UncertaintyOverlay({ uncertaintyUrl }: Props) {
           <div className="text-xs text-muted-foreground italic">
             Heatmap rendered from <code>uncertainty.tif</code> — blue→yellow→red colormap.
           </div>
+          <img
+            src={buildDownloadUrl(jobId, "uncertainty_heatmap.png")}
+            alt="Uncertainty heatmap"
+            className="w-full rounded-lg border border-border"
+            style={{ opacity }}
+          />
           <a
             href={uncertaintyUrl}
             download="uncertainty.tif"

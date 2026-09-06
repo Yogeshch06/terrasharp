@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { getJobStatus } from "@/lib/api-client";
@@ -16,7 +17,7 @@ function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-xl bg-secondary ${className}`} />;
 }
 
-export default function EnhancePage() {
+function EnhancePageContent() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get("job");
 
@@ -129,7 +130,7 @@ export default function EnhancePage() {
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Before / After Viewer</h2>
         <SatelliteViewer jobId={jobId} />
-        <UncertaintyOverlay uncertaintyUrl={uncertaintyUrl} />
+        <UncertaintyOverlay jobId={jobId} uncertaintyUrl={uncertaintyUrl} />
       </section>
 
       <section className="space-y-4">
@@ -144,8 +145,16 @@ export default function EnhancePage() {
 
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Edge Analysis</h2>
-        <EdgeCompare edgeMetrics={metrics.edge_metrics} />
+        <EdgeCompare jobId={jobId} edgeMetrics={metrics.edge_metrics} />
       </section>
     </div>
+  );
+}
+
+export default function EnhancePage() {
+  return (
+    <Suspense fallback={<div className="max-w-5xl mx-auto px-4 py-10"><Skeleton className="h-96 w-full" /></div>}>
+      <EnhancePageContent />
+    </Suspense>
   );
 }
