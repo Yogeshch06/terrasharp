@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     MODEL_PATH: str = os.getenv("MODEL_PATH", "./models/model.onnx")
-    HF_MODEL_REPO: str = os.getenv("HF_MODEL_REPO", "0anshuaditya0/terrasharp-models")
+    HF_MODEL_REPO: str = os.getenv("HF_MODEL_REPO", "yogesh2006/terrasharp-models")
     HF_MODEL_FILENAME: str = os.getenv("HF_MODEL_FILENAME", "terrasharp_swinir_sentinel2.onnx")
     HF_TOKEN: Optional[str] = os.getenv("HF_TOKEN", None)
 
