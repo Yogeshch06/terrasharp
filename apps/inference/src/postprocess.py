@@ -1,0 +1,160 @@
+import os
+import struct
+import zlib
+from typing import List, Dict, Any
+import numpy as np
+from scipy.ndimage import zoom
+
+from spectral_metrics import (
+    psnr_per_band,
+    ssim_per_band,
+    spectral_angle_mapper,
+    ndvi_preservation_score,
+    ndwi_preservation_score
+)
+from edge_metrics import compute_edge_preservation, get_edge_maps
+
+
+def _create_feather_mask(tile_h: int, tile_w: int, blend_width: int = 16) -> np.ndarray:
+    y = np.ones((tile_h, tile_w), dtype=np.float32)
+    blend_y = min(blend_width, tile_h // 2)
+    blend_x = min(blend_width, tile_w // 2)
+
+    if blend_y > 0:
+        fade_y = np.linspace(0.0, 1.0, blend_y)
+        for i in range(blend_y):
+            y[i, :] *= fade_y[i]
+            y[tile_h - 1 - i, :] *= fade_y[i]
+
+    if blend_x > 0:
+        fade_x = np.linspace(0.0, 1.0, blend_x)
+        for j in range(blend_x):
+            y[:, j] *= fade_x[j]
+            y[:, tile_w - 1 - j] *= fade_x[j]
+
+    return np.maximum(y, 1e-4)
+
+
+def reassemble_tiles(
+    tiles: List[np.ndarray],
+    tiling_plan: List[Dict[str, Any]],
+    orig_shape: tuple,
+    upscale_factor: int = 4
+) -> np.ndarray:
+    c = tiles[0].shape[0] if tiles[0].ndim == 3 else 4
+    _, orig_h, orig_w = orig_shape
+    out_h = orig_h * upscale_factor
+    out_w = orig_w * upscale_factor
+
+    canvas = np.zeros((c, out_h, out_w), dtype=np.float32)
+    weight_map = np.zeros((1, out_h, out_w), dtype=np.float32)
+
+    for tile, plan in zip(tiles, tiling_plan):
+        y_start = plan["y_start"] * upscale_factor
+        y_end = plan["y_end"] * upscale_factor
+        x_start = plan["x_start"] * upscale_factor
+        x_end = plan["x_end"] * upscale_factor
+
+        target_h = y_end - y_start
+        target_w = x_end - x_start
+
+        cropped_tile = tile[:, :target_h, :target_w]
+        feather = _create_feather_mask(target_h, target_w, blend_width=16 * upscale_factor)[np.newaxis, :, :]
+
+        canvas[:, y_start:y_end, x_start:x_end] += cropped_tile * feather
+        weight_map[:, y_start:y_end, x_start:x_end] += feather
+
+    weight_map = np.maximum(weight_map, 1e-6)
+    result = canvas / weight_map
+    return np.clip(result, 0.0, 1.0)
+
+
+def denormalize_reflectance(data: np.ndarray, to_uint16: bool = True) -> np.ndarray:
+    if to_uint16:
+        return np.clip(data * 10000.0, 0, 65535).astype(np.uint16)
+    return np.clip(data, 0.0, 1.0).astype(np.float32)
+
+
+def compute_all_metrics(lr_img: np.ndarray, sr_img: np.ndarray) -> Dict[str, Any]:
+    psnr_dict = psnr_per_band(lr_img, sr_img)
+    ssim_dict = ssim_per_band(lr_img, sr_img)
+    sam_deg = spectral_angle_mapper(lr_img, sr_img)
+    ndvi_score = ndvi_preservation_score(lr_img, sr_img)
+    ndwi_score = ndwi_preservation_score(lr_img, sr_img)
+    edge_dict = compute_edge_preservation(lr_img, sr_img)
+
+    return {
+        "psnr": psnr_dict,
+        "ssim": ssim_dict,
+        "spectral_angle_mapper_deg": sam_deg,
+        "ndvi_preservation": ndvi_score,
+        "ndwi_preservation": ndwi_score,
+        "edge_metrics": edge_dict
+    }
+
+
+def _to_uint8(data: np.ndarray) -> np.ndarray:
+    finite = data[np.isfinite(data)]
+    if finite.size == 0:
+        return np.zeros(data.shape, dtype=np.uint8)
+    low, high = np.percentile(finite, [2, 98])
+    if high <= low:
+        low = float(np.min(finite))
+        high = float(np.max(finite))
+    if high <= low:
+        return np.zeros(data.shape, dtype=np.uint8)
+    return (np.clip((data - low) / (high - low), 0.0, 1.0) * 255).astype(np.uint8)
+
+
+def _write_png(path: str, data: np.ndarray) -> None:
+    if data.ndim == 2:
+        height, width = data.shape
+        color_type = 0
+        pixels = data
+    else:
+        channels, height, width = data.shape
+        if channels != 3:
+            raise ValueError("PNG output must have one or three channels")
+        color_type = 2
+        pixels = np.moveaxis(data, 0, -1)
+
+    raw = b"".join(b"\x00" + row.tobytes() for row in pixels)
+
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload) & 0xffffffff)
+
+    png = b"\x89PNG\r\n\x1a\n"
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(raw))
+    png += chunk(b"IEND", b"")
+    with open(path, "wb") as output:
+        output.write(png)
+
+
+def _rgb_preview(image: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
+    height, width = target_shape
+    if image.shape[1:] != target_shape:
+        image = zoom(image, (1.0, height / image.shape[1], width / image.shape[2]), order=3)
+    rgb = np.stack([image[2], image[1], image[0]], axis=0)
+    return np.stack([_to_uint8(channel) for channel in rgb], axis=0)
+
+
+def _uncertainty_heatmap(uncertainty: np.ndarray) -> np.ndarray:
+    magnitude = np.mean(uncertainty, axis=0) if uncertainty.ndim == 3 else uncertainty
+    normalized = _to_uint8(magnitude).astype(np.float32) / 255.0
+    stops = np.array([[0, 0, 255], [255, 255, 0], [255, 0, 0]], dtype=np.float32)
+    positions = normalized * (len(stops) - 1)
+    lower = np.floor(positions).astype(np.int32)
+    upper = np.minimum(lower + 1, len(stops) - 1)
+    fraction = positions - lower
+    return np.moveaxis(stops[lower] * (1 - fraction[..., None]) + stops[upper] * fraction[..., None], -1, 0).astype(np.uint8)
+
+
+def save_preview_pngs(job_dir: str, input_norm: np.ndarray, sr_full: np.ndarray, unc_full: np.ndarray) -> None:
+    sr_shape = (sr_full.shape[1], sr_full.shape[2])
+    edge_before, edge_after = get_edge_maps(input_norm, sr_full)
+    _write_png(os.path.join(job_dir, "preview_before.png"), _rgb_preview(input_norm, sr_shape))
+    _write_png(os.path.join(job_dir, "preview_after.png"), _rgb_preview(sr_full, sr_shape))
+    _write_png(os.path.join(job_dir, "edge_before.png"), _to_uint8(edge_before))
+    _write_png(os.path.join(job_dir, "edge_after.png"), _to_uint8(edge_after))
+    _write_png(os.path.join(job_dir, "uncertainty_heatmap.png"), _uncertainty_heatmap(unc_full))
