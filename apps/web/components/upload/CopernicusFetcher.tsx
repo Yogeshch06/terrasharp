@@ -29,7 +29,7 @@ export default function CopernicusFetcher() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-xl border border-border bg-card p-6 space-y-5"
+      className="border border-border bg-card p-6 space-y-5"
     >
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
@@ -91,7 +91,7 @@ export default function CopernicusFetcher() {
       </div>
 
       {error && (
-        <div className="text-sm text-red-400 bg-red-950/40 border border-red-900/50 rounded-lg px-4 py-2">
+        <div className="text-sm text-destructive border-l-4 border-destructive px-4 py-2">
           {error}
         </div>
       )}

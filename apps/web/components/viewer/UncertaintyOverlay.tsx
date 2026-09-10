@@ -13,7 +13,7 @@ export default function UncertaintyOverlay({ jobId, uncertaintyUrl }: Props) {
   const [opacity, setOpacity] = useState(0.6);
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+    <div className="border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <div className="text-sm font-medium">Uncertainty Overlay</div>
@@ -30,7 +30,7 @@ export default function UncertaintyOverlay({ jobId, uncertaintyUrl }: Props) {
           aria-checked={enabled}
         >
           <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
+            className={`inline-block h-4 w-4 transform bg-white transition-transform
               ${enabled ? "translate-x-6" : "translate-x-1"}`}
           />
         </button>
@@ -66,7 +66,7 @@ export default function UncertaintyOverlay({ jobId, uncertaintyUrl }: Props) {
             </div>
           </div>
           <div className="text-xs text-muted-foreground italic">
-            Heatmap rendered from <code>uncertainty.tif</code> — blue→yellow→red colormap.
+            Heatmap rendered from <code>uncertainty.tif</code> using the model uncertainty range.
           </div>
           <img
             src={buildDownloadUrl(jobId, "uncertainty_heatmap.png")}

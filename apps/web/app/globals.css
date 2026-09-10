@@ -4,35 +4,41 @@
 
 @layer base {
   :root {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 6.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 142.1 76.2% 36.3%;
-    --primary-foreground: 355.7 100% 97.3%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 142.1 76.2% 36.3%;
-    --radius: 0.5rem;
+    --background: 250 250 250;
+    --foreground: 23 23 23;
+    --card: 255 255 255;
+    --card-foreground: 23 23 23;
+    --popover: 255 255 255;
+    --popover-foreground: 23 23 23;
+    --primary: 26 127 90;
+    --primary-foreground: 255 255 255;
+    --secondary: 245 245 245;
+    --secondary-foreground: 23 23 23;
+    --muted: 245 245 245;
+    --muted-foreground: 107 107 107;
+    --accent: 26 127 90;
+    --accent-foreground: 255 255 255;
+    --destructive: 160 44 44;
+    --destructive-foreground: 255 255 255;
+    --border: 229 229 229;
+    --input: 214 214 214;
+    --ring: 26 127 90;
+    --radius: 8px;
   }
 }
 
 body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   overflow-x: hidden;
 }
+
+* { border-color: rgb(var(--border)); }
+a, button, input, select { border-radius: var(--radius); }
+.rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, .rounded-full { border-radius: var(--radius) !important; }
+button, a { transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease; }
+::selection { background: rgb(var(--primary) / 0.16); }
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
@@ -40,12 +46,12 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgb(var(--background));
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(51, 65, 85, 0.8);
-  border-radius: 4px;
+  background: rgb(210 210 210);
+  border-radius: var(--radius);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(71, 85, 105, 1);
+  background: rgb(175 175 175);
 }

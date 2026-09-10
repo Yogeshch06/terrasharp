@@ -1,14 +1,15 @@
 import os
-import struct
-import zlib
+import time
 from typing import List, Dict, Any
 import numpy as np
+from PIL import Image
 from scipy.ndimage import zoom
 
 from spectral_metrics import (
     psnr_per_band,
     ssim_per_band,
     spectral_angle_mapper,
+    match_spatial_dims,
     ndvi_preservation_score,
     ndwi_preservation_score
 )
@@ -75,13 +76,19 @@ def denormalize_reflectance(data: np.ndarray, to_uint16: bool = True) -> np.ndar
     return np.clip(data, 0.0, 1.0).astype(np.float32)
 
 
-def compute_all_metrics(lr_img: np.ndarray, sr_img: np.ndarray) -> Dict[str, Any]:
-    psnr_dict = psnr_per_band(lr_img, sr_img)
-    ssim_dict = ssim_per_band(lr_img, sr_img)
-    sam_deg = spectral_angle_mapper(lr_img, sr_img)
-    ndvi_score = ndvi_preservation_score(lr_img, sr_img)
-    ndwi_score = ndwi_preservation_score(lr_img, sr_img)
-    edge_dict = compute_edge_preservation(lr_img, sr_img)
+def compute_all_metrics(
+    lr_img: np.ndarray,
+    sr_img: np.ndarray,
+    matched_lr: np.ndarray = None,
+    edge_maps: tuple[np.ndarray, np.ndarray] = None
+) -> Dict[str, Any]:
+    matched_lr = matched_lr if matched_lr is not None else match_spatial_dims(lr_img, sr_img.shape)
+    psnr_dict = psnr_per_band(matched_lr, sr_img)
+    ssim_dict = ssim_per_band(matched_lr, sr_img)
+    sam_deg = spectral_angle_mapper(matched_lr, sr_img)
+    ndvi_score = ndvi_preservation_score(matched_lr, sr_img)
+    ndwi_score = ndwi_preservation_score(matched_lr, sr_img)
+    edge_dict = compute_edge_preservation(lr_img, sr_img, edge_maps=edge_maps)
 
     return {
         "psnr": psnr_dict,
@@ -108,27 +115,13 @@ def _to_uint8(data: np.ndarray) -> np.ndarray:
 
 def _write_png(path: str, data: np.ndarray) -> None:
     if data.ndim == 2:
-        height, width = data.shape
-        color_type = 0
         pixels = data
     else:
-        channels, height, width = data.shape
+        channels = data.shape[0]
         if channels != 3:
             raise ValueError("PNG output must have one or three channels")
-        color_type = 2
         pixels = np.moveaxis(data, 0, -1)
-
-    raw = b"".join(b"\x00" + row.tobytes() for row in pixels)
-
-    def chunk(kind: bytes, payload: bytes) -> bytes:
-        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload) & 0xffffffff)
-
-    png = b"\x89PNG\r\n\x1a\n"
-    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0))
-    png += chunk(b"IDAT", zlib.compress(raw))
-    png += chunk(b"IEND", b"")
-    with open(path, "wb") as output:
-        output.write(png)
+    Image.fromarray(pixels).save(path, format="PNG", compress_level=1)
 
 
 def _rgb_preview(image: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
@@ -150,11 +143,59 @@ def _uncertainty_heatmap(uncertainty: np.ndarray) -> np.ndarray:
     return np.moveaxis(stops[lower] * (1 - fraction[..., None]) + stops[upper] * fraction[..., None], -1, 0).astype(np.uint8)
 
 
-def save_preview_pngs(job_dir: str, input_norm: np.ndarray, sr_full: np.ndarray, unc_full: np.ndarray) -> None:
+def save_preview_pngs(
+    job_dir: str,
+    input_norm: np.ndarray,
+    sr_full: np.ndarray,
+    unc_full: np.ndarray,
+    matched_lr: np.ndarray = None,
+    edge_maps: tuple[np.ndarray, np.ndarray] = None
+) -> None:
     sr_shape = (sr_full.shape[1], sr_full.shape[2])
-    edge_before, edge_after = get_edge_maps(input_norm, sr_full)
-    _write_png(os.path.join(job_dir, "preview_before.png"), _rgb_preview(input_norm, sr_shape))
-    _write_png(os.path.join(job_dir, "preview_after.png"), _rgb_preview(sr_full, sr_shape))
-    _write_png(os.path.join(job_dir, "edge_before.png"), _to_uint8(edge_before))
-    _write_png(os.path.join(job_dir, "edge_after.png"), _to_uint8(edge_after))
-    _write_png(os.path.join(job_dir, "uncertainty_heatmap.png"), _uncertainty_heatmap(unc_full))
+    timings = []
+
+    matched_lr = matched_lr if matched_lr is not None else match_spatial_dims(input_norm, sr_full.shape)
+    edge_before, edge_after = edge_maps if edge_maps is not None else get_edge_maps(input_norm, sr_full)
+
+    prep_start = time.time()
+    preview_before = _rgb_preview(matched_lr, sr_shape)
+    prep_time = time.time() - prep_start
+    save_start = time.time()
+    _write_png(os.path.join(job_dir, "preview_before.png"), preview_before)
+    timings.append(("preview_before", prep_time, time.time() - save_start))
+
+    prep_start = time.time()
+    preview_after = _rgb_preview(sr_full, sr_shape)
+    prep_time = time.time() - prep_start
+    save_start = time.time()
+    _write_png(os.path.join(job_dir, "preview_after.png"), preview_after)
+    timings.append(("preview_after", prep_time, time.time() - save_start))
+
+    prep_start = time.time()
+    edge_before_uint8 = _to_uint8(edge_before)
+    prep_time = time.time() - prep_start
+    save_start = time.time()
+    _write_png(os.path.join(job_dir, "edge_before.png"), edge_before_uint8)
+    timings.append(("edge_before", prep_time, time.time() - save_start))
+
+    prep_start = time.time()
+    edge_after_uint8 = _to_uint8(edge_after)
+    prep_time = time.time() - prep_start
+    save_start = time.time()
+    _write_png(os.path.join(job_dir, "edge_after.png"), edge_after_uint8)
+    timings.append(("edge_after", prep_time, time.time() - save_start))
+
+    prep_start = time.time()
+    uncertainty_heatmap = _uncertainty_heatmap(unc_full)
+    prep_time = time.time() - prep_start
+    save_start = time.time()
+    _write_png(os.path.join(job_dir, "uncertainty_heatmap.png"), uncertainty_heatmap)
+    timings.append(("uncertainty_heatmap", prep_time, time.time() - save_start))
+
+    print(
+        "[PNG DEBUG] "
+        + " | ".join(
+            f"{name}: prep={prep:.2f}s save={save:.2f}s"
+            for name, prep, save in timings
+        )
+    )

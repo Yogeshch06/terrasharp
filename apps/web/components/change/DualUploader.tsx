@@ -58,8 +58,8 @@ export default function DualUploader({ onBothUploaded }: { onBothUploaded: (id1:
         <label
           key={i}
           htmlFor={`dual-upload-${i}`}
-          className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-all
-            ${slot.jobId ? "border-primary/60 bg-primary/5" : "border-border hover:border-primary/40 hover:bg-secondary/20"}
+            className={`flex flex-col items-center justify-center gap-3 border border-dashed p-8 cursor-pointer transition-all
+            ${slot.jobId ? "border-primary bg-primary/5" : "border-border hover:border-primary hover:bg-secondary"}
             ${slot.uploading ? "opacity-70 pointer-events-none" : ""}
           `}
         >
@@ -70,12 +70,12 @@ export default function DualUploader({ onBothUploaded }: { onBothUploaded: (id1:
             className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(i as 0 | 1, f); }}
           />
-          <div className="text-3xl">{slot.jobId ? "✅" : slot.uploading ? "⏳" : "📁"}</div>
+          <div className="text-sm font-semibold text-primary">{slot.jobId ? "READY" : slot.uploading ? "UPLOADING" : "TIF"}</div>
           <div className="text-sm font-semibold">{slot.label}</div>
           <div className="text-xs text-muted-foreground text-center">
             {slot.uploading ? "Uploading…" : slot.jobId ? `Job: ${slot.jobId.slice(0, 8)}…` : "Click to select .tif"}
           </div>
-          {slot.error && <div className="text-xs text-red-400">{slot.error}</div>}
+          {slot.error && <div className="text-xs text-destructive">{slot.error}</div>}
         </label>
       ))}
     </div>

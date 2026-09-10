@@ -21,19 +21,27 @@ def compute_multichannel_edge_map(img_chw: np.ndarray) -> np.ndarray:
     return np.mean(edge_maps, axis=0)
 
 
-def get_edge_maps(lr_img: np.ndarray, sr_img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    ref = _ensure_chw(lr_img)
+def get_edge_maps(
+    lr_img: np.ndarray,
+    sr_img: np.ndarray,
+    ref: np.ndarray = None
+) -> tuple[np.ndarray, np.ndarray]:
+    ref = _ensure_chw(lr_img) if ref is None else _ensure_chw(ref)
     sr = _ensure_chw(sr_img)
     if ref.shape[1:] != sr.shape[1:]:
         zoom_factors = (1.0, sr.shape[1] / ref.shape[1], sr.shape[2] / ref.shape[2])
-        ref = zoom(ref, zoom_factors, order=3)
+        ref = zoom(ref, zoom_factors, order=1)
     lr_edges = compute_multichannel_edge_map(ref)
     sr_edges = compute_multichannel_edge_map(sr)
     return lr_edges, sr_edges
 
 
-def compute_edge_preservation(lr_img: np.ndarray, sr_img: np.ndarray) -> dict:
-    lr_edges, sr_edges = get_edge_maps(lr_img, sr_img)
+def compute_edge_preservation(
+    lr_img: np.ndarray,
+    sr_img: np.ndarray,
+    edge_maps: tuple[np.ndarray, np.ndarray] = None
+) -> dict:
+    lr_edges, sr_edges = edge_maps if edge_maps is not None else get_edge_maps(lr_img, sr_img)
     lr_flat = lr_edges.flatten()
     sr_flat = sr_edges.flatten()
 

@@ -6,7 +6,7 @@ import {
 import type { SpectralMetrics } from "@/types";
 import MetricsCard from "./MetricsCard";
 
-const BAND_COLORS = ["#60a5fa", "#4ade80", "#f87171", "#facc15"];
+const BAND_COLORS = ["rgb(var(--primary))", "rgb(var(--foreground))", "rgb(var(--muted-foreground))", "rgb(var(--border))"];
 const BAND_ORDER = ["B02_Blue", "B03_Green", "B04_Red", "B08_NIR"];
 
 function bandChartData(metrics: Record<string, number>) {
@@ -39,16 +39,16 @@ export default function SpectralDashboard({ metrics }: Props) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="rounded-xl border border-border bg-card p-5">
+        <div className="border border-border bg-card p-5">
           <h3 className="text-sm font-semibold mb-4">PSNR per Band (dB)</h3>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={psnrData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--border))" />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgb(var(--muted-foreground))" }} />
+              <YAxis tick={{ fontSize: 11, fill: "rgb(var(--muted-foreground))" }} />
               <Tooltip
-                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px" }}
-                labelStyle={{ color: "#e2e8f0" }}
+                contentStyle={{ background: "rgb(var(--card))", border: "1px solid rgb(var(--border))", borderRadius: "8px" }}
+                labelStyle={{ color: "rgb(var(--foreground))" }}
               />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 {psnrData.map((_, i) => <Cell key={i} fill={BAND_COLORS[i % BAND_COLORS.length]} />)}
@@ -57,16 +57,16 @@ export default function SpectralDashboard({ metrics }: Props) {
           </ResponsiveContainer>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-5">
+        <div className="border border-border bg-card p-5">
           <h3 className="text-sm font-semibold mb-4">SSIM per Band</h3>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={ssimData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-              <YAxis domain={[0, 1]} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--border))" />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgb(var(--muted-foreground))" }} />
+              <YAxis domain={[0, 1]} tick={{ fontSize: 11, fill: "rgb(var(--muted-foreground))" }} />
               <Tooltip
-                contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px" }}
-                labelStyle={{ color: "#e2e8f0" }}
+                contentStyle={{ background: "rgb(var(--card))", border: "1px solid rgb(var(--border))", borderRadius: "8px" }}
+                labelStyle={{ color: "rgb(var(--foreground))" }}
               />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 {ssimData.map((_, i) => <Cell key={i} fill={BAND_COLORS[i % BAND_COLORS.length]} />)}

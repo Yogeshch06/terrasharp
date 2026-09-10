@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", 50))
     TILE_SIZE: int = int(os.getenv("TILE_SIZE", 256))
     UPSCALE_FACTOR: int = int(os.getenv("UPSCALE_FACTOR", 4))
-    MC_DROPOUT_PASSES: int = int(os.getenv("MC_DROPOUT_PASSES", 5))
+    MC_DROPOUT_PASSES: int = int(os.getenv("MC_DROPOUT_PASSES", 2))
 
     ALLOWED_ORIGIN: str = os.getenv("ALLOWED_ORIGIN", "*")
     DB_PATH: str = os.getenv("DB_PATH", "./data/jobs.db")

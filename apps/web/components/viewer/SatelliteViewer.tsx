@@ -48,7 +48,7 @@ export default function SatelliteViewer({ jobId }: Props) {
 
       <div
         ref={containerRef}
-        className="relative rounded-xl border border-border overflow-hidden cursor-col-resize bg-black select-none"
+        className="relative border border-border overflow-hidden cursor-col-resize bg-secondary select-none"
         style={{ height: "420px" }}
         onMouseMove={onMouseMove}
         onMouseDown={() => { dragging.current = true; }}
@@ -72,17 +72,17 @@ export default function SatelliteViewer({ jobId }: Props) {
           style={{ left: `${sliderPos}%` }}
         />
         <div
-          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full border-2 border-white bg-background flex items-center justify-center text-xs text-muted-foreground shadow-lg cursor-col-resize z-10"
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 border border-primary bg-card flex items-center justify-center text-xs text-primary cursor-col-resize z-10"
           style={{ left: `${sliderPos}%` }}
           onMouseDown={(e) => { e.stopPropagation(); dragging.current = true; }}
         >
-          ⇄
+          |
         </div>
 
-        <div className="absolute top-2 left-3 text-xs bg-black/60 text-white px-2 py-0.5 rounded">
-          Bicubic
+        <div className="absolute top-2 left-3 text-xs bg-card text-foreground px-2 py-1 border border-border">
+          Baseline
         </div>
-        <div className="absolute top-2 right-3 text-xs bg-black/60 text-primary px-2 py-0.5 rounded">
+        <div className="absolute top-2 right-3 text-xs bg-card text-primary px-2 py-1 border border-border">
           SR Enhanced
         </div>
       </div>

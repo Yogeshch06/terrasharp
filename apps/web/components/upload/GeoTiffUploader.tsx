@@ -84,8 +84,8 @@ export default function GeoTiffUploader() {
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
       onClick={() => !isLoading && inputRef.current?.click()}
-      className={`relative rounded-xl border-2 border-dashed p-10 text-center cursor-pointer transition-all
-        ${dragging ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-secondary/30"}
+      className={`relative border border-dashed bg-card p-10 text-center cursor-pointer transition-all
+        ${dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary hover:bg-secondary"}
         ${isLoading ? "pointer-events-none opacity-80" : ""}
         ${status === "error" ? "border-destructive/60" : ""}
       `}
@@ -100,7 +100,7 @@ export default function GeoTiffUploader() {
       />
 
       <div className="space-y-3">
-        <div className="text-4xl">🛰️</div>
+        <div className="mx-auto flex h-10 w-10 items-center justify-center border border-border text-sm font-semibold text-primary">TIFF</div>
         <div className="font-semibold text-lg">
           {isLoading ? (
             status === "validating" ? "Validating GeoTIFF…" : `Uploading ${fileName}…`
@@ -115,16 +115,16 @@ export default function GeoTiffUploader() {
         </div>
 
         {isLoading && (
-          <div className="w-full bg-secondary rounded-full h-1.5 mt-4 overflow-hidden">
+          <div className="w-full bg-secondary h-1.5 mt-4 overflow-hidden">
             <div
-              className="h-full bg-primary transition-all duration-200 rounded-full"
+              className="h-full bg-primary transition-all duration-200"
               style={{ width: `${progress}%` }}
             />
           </div>
         )}
 
         {status === "error" && error && (
-          <div className="mt-3 text-sm text-red-400 bg-red-950/40 border border-red-900/50 rounded-lg px-4 py-2">
+          <div className="mt-3 text-sm text-destructive border-l-4 border-destructive px-4 py-2 text-left">
             {error}
           </div>
         )}

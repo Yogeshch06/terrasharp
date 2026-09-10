@@ -41,20 +41,20 @@ export default function DiffMapViewer({ metrics1, metrics2, jobId1, jobId2 }: Pr
           <div key={label} className="space-y-2">
             <div className="text-sm font-medium">{label}</div>
             <div
-              className="rounded-xl border border-border bg-black flex items-center justify-center text-muted-foreground/40 text-xs"
+              className="border border-border bg-secondary flex items-center justify-center text-muted-foreground text-xs"
               style={{ height: "220px" }}
             >
               {i === 2 ? (
                 <div className="text-center space-y-2">
-                  <div className="text-3xl">📊</div>
+                  <div className="text-sm font-semibold text-primary">DIFF</div>
                   <div>Client-side NDVI diff</div>
                   <div className="text-xs text-muted-foreground">
-                    ΔNDVI = <span className={ndviDelta > 0.05 ? "text-red-400" : "text-green-400"}>{ndviDelta.toFixed(4)}</span>
+                    ΔNDVI = <span className="text-primary">{ndviDelta.toFixed(4)}</span>
                   </div>
                 </div>
               ) : (
                 <div className="text-center space-y-1">
-                  <div className="text-3xl">🛰️</div>
+                  <div className="text-sm font-semibold text-primary">SCENE</div>
                   <div>{label}</div>
                   <div className="font-mono text-xs">{(i === 0 ? jobId1 : jobId2).slice(0, 8)}…</div>
                 </div>
@@ -64,7 +64,7 @@ export default function DiffMapViewer({ metrics1, metrics2, jobId1, jobId2 }: Pr
         ))}
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">
+      <div className="border-l-4 border-border bg-card p-4 text-xs text-muted-foreground">
         <strong>Note:</strong> Diff computed client-side from NDVI preservation metrics of each job.
         A dedicated <code>/change-detect</code> backend endpoint would provide pixel-level change maps.
         Red = increased NDVI, Green = decreased NDVI, Blue = stable.

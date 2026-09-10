@@ -17,7 +17,7 @@ const MODES: { mode: BandMode; label: string }[] = [
 
 export default function BandSelector({ activeMode, onChange }: Props) {
   return (
-    <div className="inline-flex rounded-lg border border-border bg-card p-1 gap-1">
+    <div className="inline-flex border border-border bg-card p-1 gap-1">
       {MODES.map(({ mode, label }) => (
         <button
           key={mode}

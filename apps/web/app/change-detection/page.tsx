@@ -32,7 +32,7 @@ export default function ChangeDetectionPage() {
   }, [pollBoth]);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-10 space-y-10">
+    <div className="max-w-6xl mx-auto px-6 py-12 space-y-12">
       <div>
         <h1 className="text-2xl font-bold">Change Detection</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -47,7 +47,7 @@ export default function ChangeDetectionPage() {
 
       {polling && !bothReady && (
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <div className="w-3 h-3 rounded-full bg-primary" />
           Enhancing both images — polling status…
         </div>
       )}

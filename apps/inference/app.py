@@ -4,6 +4,7 @@ import uuid
 import json
 import sqlite3
 import datetime
+import time
 from typing import Optional
 import numpy as np
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
@@ -22,6 +23,8 @@ from config import settings
 from src.model import ONNXInferenceEngine
 from src.preprocess import normalize_reflectance, create_tiling_plan
 from src.postprocess import reassemble_tiles, compute_all_metrics, save_preview_pngs
+from src.spectral_metrics import match_spatial_dims
+from src.edge_metrics import get_edge_maps
 from src.geotiff_utils import read_geotiff, write_geotiff, write_uncertainty_geotiff
 from src.copernicus import CopernicusClient
 
@@ -89,11 +92,13 @@ class CopernicusRequest(BaseModel):
     aoi_size_km: float = 2.56
 
 
-def run_super_resolution_pipeline(file_bytes: bytes, job_id: str) -> dict:
+def run_super_resolution_pipeline(file_bytes: bytes, job_id: str, request_start: Optional[float] = None) -> dict:
+    total_start = request_start if request_start is not None else time.time()
     job_dir = os.path.join(settings.TMP_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
 
     input_data, profile = read_geotiff(file_bytes)
+    preprocess_start = time.time()
     input_norm = normalize_reflectance(input_data)
 
     tiles, tiling_plan = create_tiling_plan(
@@ -101,17 +106,21 @@ def run_super_resolution_pipeline(file_bytes: bytes, job_id: str) -> dict:
         tile_size=settings.TILE_SIZE,
         overlap=32
     )
+    preprocess_time = time.time() - preprocess_start
 
     sr_tiles = []
     unc_tiles = []
+    inference_timing = {"main_inference": 0.0, "uncertainty": 0.0, "uncertainty_passes": 0}
     for tile in tiles:
         sr_tile, unc_tile = engine.infer_with_uncertainty(
             tile,
-            num_passes=settings.MC_DROPOUT_PASSES
+            num_passes=settings.MC_DROPOUT_PASSES,
+            timing=inference_timing
         )
         sr_tiles.append(sr_tile)
         unc_tiles.append(unc_tile)
 
+    postprocess_start = time.time()
     sr_full = reassemble_tiles(
         sr_tiles,
         tiling_plan,
@@ -125,10 +134,12 @@ def run_super_resolution_pipeline(file_bytes: bytes, job_id: str) -> dict:
         input_norm.shape,
         upscale_factor=settings.UPSCALE_FACTOR
     )
+    postprocess_time = time.time() - postprocess_start
 
     enhanced_tif_path = os.path.join(job_dir, "enhanced.tif")
     uncertainty_tif_path = os.path.join(job_dir, "uncertainty.tif")
 
+    geotiff_start = time.time()
     write_geotiff(
         enhanced_tif_path,
         sr_full,
@@ -142,9 +153,28 @@ def run_super_resolution_pipeline(file_bytes: bytes, job_id: str) -> dict:
         profile,
         upscale_factor=settings.UPSCALE_FACTOR
     )
+    geotiff_time = time.time() - geotiff_start
 
-    metrics = compute_all_metrics(input_norm, sr_full)
-    save_preview_pngs(job_dir, input_norm, sr_full, unc_full)
+    metrics_start = time.time()
+    matched_lr_start = time.time()
+    matched_lr = match_spatial_dims(input_norm, sr_full.shape)
+    matched_lr_time = time.time() - matched_lr_start
+
+    edge_maps_start = time.time()
+    edge_maps = get_edge_maps(input_norm, sr_full, ref=matched_lr)
+    edge_maps_time = time.time() - edge_maps_start
+
+    metrics = compute_all_metrics(input_norm, sr_full, matched_lr=matched_lr, edge_maps=edge_maps)
+    metrics_time = time.time() - metrics_start
+    print(
+        f"[METRICS DEBUG] match_spatial_dims: {matched_lr_time:.2f}s | "
+        f"get_edge_maps: {edge_maps_time:.2f}s | "
+        f"compute_all_metrics: {metrics_time - matched_lr_time - edge_maps_time:.2f}s"
+    )
+
+    png_start = time.time()
+    save_preview_pngs(job_dir, input_norm, sr_full, unc_full, matched_lr=matched_lr, edge_maps=edge_maps)
+    png_time = time.time() - png_start
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -155,6 +185,15 @@ def run_super_resolution_pipeline(file_bytes: bytes, job_id: str) -> dict:
     )
     conn.commit()
     conn.close()
+
+    total_time = time.time() - total_start
+    print(
+        f"[TIMING] Preprocess: {preprocess_time:.2f}s | "
+        f"Inference: {inference_timing['main_inference']:.2f}s | "
+        f"Uncertainty ({inference_timing['uncertainty_passes']} passes): {inference_timing['uncertainty']:.2f}s | "
+        f"Postprocess: {postprocess_time:.2f}s | Metrics: {metrics_time:.2f}s | "
+        f"PNG export: {png_time:.2f}s | GeoTIFF write: {geotiff_time:.2f}s | TOTAL: {total_time:.2f}s"
+    )
 
     return {
         "job_id": job_id,
@@ -177,13 +216,14 @@ async def enhance_image(file: UploadFile = File(...)):
     if not engine:
         raise HTTPException(status_code=503, detail="Model inference engine is not ready.")
 
+    request_start = time.time()
     content = await file.read()
     if len(content) > settings.MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(status_code=400, detail=f"File exceeds maximum upload size of {settings.MAX_UPLOAD_MB}MB.")
 
     job_id = str(uuid.uuid4())
     try:
-        result = run_super_resolution_pipeline(content, job_id)
+        result = run_super_resolution_pipeline(content, job_id, request_start=request_start)
         return result
     except Exception as e:
         conn = get_db_connection()

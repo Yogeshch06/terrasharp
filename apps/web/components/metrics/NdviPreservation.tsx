@@ -24,10 +24,10 @@ export default function NdviPreservation({ ndviPreservation, ndwiPreservation }:
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="border border-border bg-card p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold">NDVI Preservation</h3>
-          <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">
+          <span className="text-xs font-mono text-primary border-l-2 border-primary pl-2">
             r = {ndviPreservation.toFixed(4)}
           </span>
         </div>
@@ -36,19 +36,19 @@ export default function NdviPreservation({ ndviPreservation, ndwiPreservation }:
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <ScatterChart>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-            <XAxis dataKey="baseline" name="Baseline" tick={{ fontSize: 10, fill: "#94a3b8" }} label={{ value: "Baseline NDVI", position: "insideBottom", offset: -4, style: { fill: "#64748b", fontSize: 10 } }} />
-            <YAxis dataKey="sr" name="SR" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-            <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px", fontSize: "11px" }} />
-            <Scatter data={ndviData} fill="#4ade80" fillOpacity={0.7} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--border))" />
+            <XAxis dataKey="baseline" name="Baseline" tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }} label={{ value: "Baseline NDVI", position: "insideBottom", offset: -4, style: { fill: "rgb(var(--muted-foreground))", fontSize: 10 } }} />
+            <YAxis dataKey="sr" name="SR" tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }} />
+            <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "rgb(var(--card))", border: "1px solid rgb(var(--border))", borderRadius: "8px", fontSize: "11px" }} />
+            <Scatter data={ndviData} fill="rgb(var(--primary))" fillOpacity={0.7} />
           </ScatterChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="border border-border bg-card p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold">NDWI Preservation</h3>
-          <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">
+          <span className="text-xs font-mono text-primary border-l-2 border-primary pl-2">
             r = {ndwiPreservation.toFixed(4)}
           </span>
         </div>
@@ -57,11 +57,11 @@ export default function NdviPreservation({ ndviPreservation, ndwiPreservation }:
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <ScatterChart>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-            <XAxis dataKey="baseline" name="Baseline" tick={{ fontSize: 10, fill: "#94a3b8" }} label={{ value: "Baseline NDWI", position: "insideBottom", offset: -4, style: { fill: "#64748b", fontSize: 10 } }} />
-            <YAxis dataKey="sr" name="SR" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-            <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px", fontSize: "11px" }} />
-            <Scatter data={ndwiData} fill="#60a5fa" fillOpacity={0.7} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--border))" />
+            <XAxis dataKey="baseline" name="Baseline" tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }} label={{ value: "Baseline NDWI", position: "insideBottom", offset: -4, style: { fill: "rgb(var(--muted-foreground))", fontSize: 10 } }} />
+            <YAxis dataKey="sr" name="SR" tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }} />
+            <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "rgb(var(--card))", border: "1px solid rgb(var(--border))", borderRadius: "8px", fontSize: "11px" }} />
+            <Scatter data={ndwiData} fill="rgb(var(--foreground))" fillOpacity={0.7} />
           </ScatterChart>
         </ResponsiveContainer>
       </div>

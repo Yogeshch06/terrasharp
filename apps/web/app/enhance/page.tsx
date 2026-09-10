@@ -12,9 +12,12 @@ import UncertaintyOverlay from "@/components/viewer/UncertaintyOverlay";
 import SatelliteViewer from "@/components/viewer/SatelliteViewer";
 import { buildDownloadUrl } from "@/lib/api-client";
 import { POLL_INTERVAL_MS } from "@/lib/constants";
+import dynamic from "next/dynamic";
+const GeoTiffUploader = dynamic(() => import("@/components/upload/GeoTiffUploader"), { ssr: false });
+import CopernicusFetcher from "@/components/upload/CopernicusFetcher";
 
 function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-xl bg-secondary ${className}`} />;
+  return <div className={`rounded-md bg-secondary ${className}`} />;
 }
 
 function EnhancePageContent() {
@@ -44,22 +47,17 @@ function EnhancePageContent() {
 
   if (!jobId) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <div className="text-5xl mb-4">🛰️</div>
-        <h1 className="text-2xl font-bold mb-2">No job selected</h1>
-        <p className="text-muted-foreground mb-6">Upload a GeoTIFF or fetch from Copernicus to start.</p>
-        <a href="/" className="inline-block bg-primary text-primary-foreground px-5 py-2 rounded-md hover:bg-primary/90 transition-colors text-sm">
-          Go to Upload
-        </a>
+      <div className="max-w-4xl mx-auto px-6 py-16 space-y-12">
+        <div className="max-w-2xl space-y-3"><p className="text-sm font-semibold text-primary">ENHANCE A SCENE</p><h1 className="text-4xl font-semibold tracking-tight">Start with a Sentinel-2 GeoTIFF.</h1><p className="text-muted-foreground leading-7">Upload a four-band image or request a scene from Copernicus. Your result will open here when processing is complete.</p></div>
+        <section className="space-y-4"><h2 className="text-xl font-semibold">Upload GeoTIFF</h2><GeoTiffUploader /></section>
+        <section className="space-y-4"><h2 className="text-xl font-semibold">Fetch from Copernicus</h2><CopernicusFetcher /></section>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <div className="text-red-400 text-lg font-semibold mb-2">Error</div>
-        <div className="text-muted-foreground text-sm">{error}</div>
+      <div className="max-w-2xl mx-auto px-6 py-20 border-l-4 border-destructive"><div className="text-destructive text-lg font-semibold mb-2">Error</div><div className="text-muted-foreground text-sm">{error}</div>
       </div>
     );
   }
@@ -75,7 +73,7 @@ function EnhancePageContent() {
           <Skeleton className="h-4 w-48" />
         </div>
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <div className="w-3 h-3 rounded-full bg-primary" />
           Processing job <code className="text-xs font-mono">{jobId}</code>…
         </div>
         <Skeleton className="h-96 w-full" />
@@ -88,8 +86,7 @@ function EnhancePageContent() {
 
   if (isFailed) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <div className="text-red-400 text-lg font-semibold mb-2">Job Failed</div>
+      <div className="max-w-2xl mx-auto px-6 py-20 border-l-4 border-destructive"><div className="text-destructive text-lg font-semibold mb-2">Job Failed</div>
         <div className="text-muted-foreground text-sm">{job?.status}</div>
       </div>
     );
@@ -99,7 +96,7 @@ function EnhancePageContent() {
   const uncertaintyUrl = buildDownloadUrl(jobId, "uncertainty.tif");
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-10 space-y-10">
+    <div className="max-w-6xl mx-auto px-6 py-12 space-y-12">
       <div>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -111,7 +108,7 @@ function EnhancePageContent() {
               href={buildDownloadUrl(jobId, "enhanced.tif")}
               download="enhanced.tif"
               id="download-enhanced"
-              className="text-sm px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              className="text-sm px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90"
             >
               ↓ Enhanced GeoTIFF
             </a>
@@ -119,7 +116,7 @@ function EnhancePageContent() {
               href={uncertaintyUrl}
               download="uncertainty.tif"
               id="download-uncertainty"
-              className="text-sm px-4 py-2 rounded-md border border-border hover:bg-secondary transition-colors"
+              className="text-sm px-4 py-2 border border-border bg-card hover:bg-secondary"
             >
               ↓ Uncertainty Map
             </a>

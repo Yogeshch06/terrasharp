@@ -24,7 +24,7 @@ export default function EdgeCompare({ jobId, edgeMetrics, width = 320, height = 
             alt="Bicubic baseline edge map"
             width={width}
             height={height}
-            className="w-full rounded-lg border border-border bg-black"
+            className="w-full border border-border bg-secondary"
           />
           <div className="text-xs text-center text-muted-foreground">Bicubic Baseline</div>
         </div>
@@ -34,21 +34,21 @@ export default function EdgeCompare({ jobId, edgeMetrics, width = 320, height = 
             alt="SR output edge map"
             width={width}
             height={height}
-            className="w-full rounded-lg border border-border bg-black"
+            className="w-full border border-border bg-secondary"
           />
           <div className="text-xs text-center text-muted-foreground">SR Output</div>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-3 text-sm">
-        <div className="rounded-lg border border-border bg-card px-3 py-2">
+        <div className="border border-border bg-card px-3 py-2">
           <div className="text-xs text-muted-foreground">Cosine Similarity</div>
           <div className="font-mono font-semibold text-primary">{edgeMetrics.edge_cosine_similarity.toFixed(4)}</div>
         </div>
-        <div className="rounded-lg border border-border bg-card px-3 py-2">
+        <div className="border border-border bg-card px-3 py-2">
           <div className="text-xs text-muted-foreground">L1 Diff</div>
           <div className="font-mono font-semibold">{edgeMetrics.edge_l1_diff.toFixed(4)}</div>
         </div>
-        <div className="rounded-lg border border-border bg-card px-3 py-2">
+        <div className="border border-border bg-card px-3 py-2">
           <div className="text-xs text-muted-foreground">Enhancement Ratio</div>
           <div className="font-mono font-semibold">{edgeMetrics.edge_enhancement_ratio.toFixed(3)}×</div>
         </div>

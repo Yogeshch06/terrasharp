@@ -19,7 +19,7 @@ def match_spatial_dims(lr_img: np.ndarray, target_shape: tuple) -> np.ndarray:
     if (h_l, w_l) == (h_t, w_t):
         return lr_chw
     zoom_factors = (1.0, h_t / h_l, w_t / w_l)
-    return zoom(lr_chw, zoom_factors, order=3)
+    return zoom(lr_chw, zoom_factors, order=1)
 
 
 def psnr_per_band(img_ref: np.ndarray, img_sr: np.ndarray) -> dict:
@@ -50,7 +50,7 @@ def ssim_per_band(img_ref: np.ndarray, img_sr: np.ndarray) -> dict:
         b_name = band_names[i] if i < len(band_names) else f"Band_{i}"
         r_b = np.clip(ref[i], 0.0, 1.0)
         s_b = np.clip(sr[i], 0.0, 1.0)
-        val = compute_ssim(r_b, s_b, data_range=1.0)
+        val = compute_ssim(r_b, s_b, win_size=7, data_range=1.0)
         results[b_name] = float(val)
     results["mean_ssim"] = float(np.mean(list(results.values())))
     return results
