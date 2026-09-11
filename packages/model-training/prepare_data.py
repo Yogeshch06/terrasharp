@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import re
+import warnings
 from pathlib import Path
 
 import numpy as np
 import rasterio
+from rasterio.env import Env
 from rasterio.windows import Window, transform as window_transform
 
 
@@ -36,6 +39,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=42,
         help="Random seed for the train/validation split (default: 42).",
+    )
+    parser.add_argument(
+        "--save_scene_stack",
+        action="store_true",
+        default=False,
+        help="Write the full stacked 4-band scene image to --output_scene only when explicitly requested.",
     )
     return parser.parse_args()
 
@@ -123,6 +132,35 @@ def read_and_stack(band_paths: list[Path]) -> tuple[np.ndarray, dict]:
     return stack, reference_profile
 
 
+def derive_scene_prefix(safe_dir: Path) -> str:
+    """Create a stable per-scene prefix from a Sentinel-2 SAFE folder name.
+
+    Example SAFE folder name:
+    S2A_MSIL2A_20260823T053241_N0512_R105_T43PCS_20260823T122218.SAFE
+
+    Returns a short prefix like T43PCS_20260823.
+    """
+    safe_name = safe_dir.name.upper()
+    safe_name = safe_name[:-5] if safe_name.endswith(".SAFE") else safe_name
+
+    # Expected SAFE naming convention: ..._T43PCS_20260823T122218
+    match = re.search(r"_(T\d{2}[A-Z]{3})_(\d{8})T\d{6}$", safe_name)
+    if match:
+        tile_id, date_token = match.groups()
+        return f"{tile_id}_{date_token}"
+
+    # Conservative fallback: scan for any tile token and a date token anywhere
+    tile_match = re.search(r"_(T\d{2}[A-Z]{3})_", safe_name)
+    date_match = re.search(r"_(\d{8})T\d{6}", safe_name)
+    if tile_match and date_match:
+        return f"{tile_match.group(1)}_{date_match.group(1)}"
+
+    raise ValueError(
+        f"Could not derive a chip-prefix from SAFE folder name: {safe_dir.name}. "
+        "Expected a Sentinel-2 SAFE folder following the S2*_MSIL2A_YYYYMMDD..._Txxxxx_...SAFE pattern."
+    )
+
+
 def write_scene(stack: np.ndarray, profile: dict, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     scene_profile = profile.copy()
@@ -131,12 +169,37 @@ def write_scene(stack: np.ndarray, profile: dict, output_path: Path) -> None:
         destination.write(stack)
 
 
+def ensure_no_scene_prefix_collision(scene_prefix: str, train_dir: Path, val_dir: Path) -> None:
+    """Raise before writing when a requested scene prefix already has files in the split folders."""
+    train_dir.mkdir(parents=True, exist_ok=True)
+    val_dir.mkdir(parents=True, exist_ok=True)
+
+    collisions: list[Path] = []
+    for split_dir in (train_dir, val_dir):
+        collisions.extend(split_dir.glob(f"{scene_prefix}_chip_*.tif"))
+
+    if collisions:
+        formatted = "\n  - ".join(str(path) for path in collisions)
+        loud_message = (
+            f"!!! WARNING: filename-prefix collision detected for scene prefix "
+            f"{scene_prefix}. Existing chip files already present in the output dataset:\n"
+            f"  - {formatted}\n"
+            "Refusing to continue and overwrite any existing chip files. "
+            "Please remove or rename the colliding sample files before rerunning."
+        )
+        warnings.warn(loud_message, RuntimeWarning, stacklevel=2)
+        raise FileExistsError(
+            f"Refusing to overwrite chips with colliding scene prefix '{scene_prefix}'."
+        )
+
+
 def extract_chips(
     stack: np.ndarray,
     profile: dict,
     train_dir: Path,
     val_dir: Path,
     seed: int,
+    scene_prefix: str,
 ) -> tuple[int, int, int, np.ndarray]:
     height, width = stack.shape[1:]
     chips: list[tuple[int, int, np.ndarray]] = []
@@ -168,12 +231,14 @@ def extract_chips(
         dtype=stack.dtype,
     )
 
+    ensure_no_scene_prefix_collision(scene_prefix, train_dir, val_dir)
+
     for split_dir, split_chips in ((train_dir, train_chips), (val_dir, val_chips)):
         split_dir.mkdir(parents=True, exist_ok=True)
         for chip_number, (row, column, chip) in enumerate(split_chips):
             window = Window(column, row, CHIP_SIZE, CHIP_SIZE)
             chip_profile["transform"] = window_transform(window, profile["transform"])
-            output_path = split_dir / f"chip_{chip_number:04d}.tif"
+            output_path = split_dir / f"{scene_prefix}_chip_{chip_number:04d}.tif"
             with rasterio.open(output_path, "w", **chip_profile) as destination:
                 destination.write(chip)
 
@@ -195,25 +260,30 @@ def main() -> None:
     if safe_dir.suffix.upper() != ".SAFE":
         raise ValueError(f"--safe_dir must point to an extracted .SAFE folder: {safe_dir}")
 
-    band_paths = find_band_paths(safe_dir)
-    stack, profile = read_and_stack(band_paths)
-    write_scene(stack, profile, args.output_scene)
+    with Env(CHECK_DISK_FREE_SPACE='FALSE'):
+        scene_prefix = derive_scene_prefix(safe_dir)
 
-    train_dir = Path("datasets/samples/train/hr")
-    val_dir = Path("datasets/samples/val/hr")
-    total_chips, skipped, train_count, average_reflectance = extract_chips(
-        stack, profile, train_dir, val_dir, args.seed
-    )
+        band_paths = find_band_paths(safe_dir)
+        stack, profile = read_and_stack(band_paths)
 
-    print("SAFE training-chip extraction complete")
-    print(f"Stacked scene: {args.output_scene}")
-    print(f"Total chips extracted: {total_chips}")
-    print(f"Chips skipped for nodata (>5% zero pixels): {skipped}")
-    print(f"Train/val split: {train_count}/{total_chips - train_count}")
-    print(
-        "Average per-band reflectance (B02, B03, B04, B08): "
-        + ", ".join(f"{value:.2f}" for value in average_reflectance)
-    )
+        if args.save_scene_stack:
+            write_scene(stack, profile, args.output_scene)
+
+        train_dir = Path("datasets/samples/train/hr")
+        val_dir = Path("datasets/samples/val/hr")
+        total_chips, skipped, train_count, average_reflectance = extract_chips(
+            stack, profile, train_dir, val_dir, args.seed, scene_prefix
+        )
+
+        print("SAFE training-chip extraction complete")
+        print(f"Stacked scene: {args.output_scene}")
+        print(f"Total chips extracted: {total_chips}")
+        print(f"Chips skipped for nodata (>5% zero pixels): {skipped}")
+        print(f"Train/val split: {train_count}/{total_chips - train_count}")
+        print(
+            "Average per-band reflectance (B02, B03, B04, B08): "
+            + ", ".join(f"{value:.2f}" for value in average_reflectance)
+        )
 
 
 if __name__ == "__main__":
