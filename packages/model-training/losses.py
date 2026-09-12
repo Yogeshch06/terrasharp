@@ -73,20 +73,25 @@ class TerraSharpLoss(nn.Module):
         l1_weight=1.0,
         perceptual_weight=0.1,
         edge_weight=0.5,
-        ndvi_weight=0.3
+        ndvi_weight=0.3,
+        adversarial_weight=0.005,
+        use_adversarial=False,
     ):
         super().__init__()
         self.l1_weight = l1_weight
         self.perceptual_weight = perceptual_weight
         self.edge_weight = edge_weight
         self.ndvi_weight = ndvi_weight
+        self.adversarial_weight = adversarial_weight
+        self.use_adversarial = use_adversarial
 
         self.l1_loss = nn.L1Loss()
         self.perceptual_loss = VGGPerceptualLoss()
         self.edge_loss = SobelEdgeLoss(channels=4)
         self.ndvi_loss = NDVILoss()
+        self.mse_loss = nn.MSELoss()
 
-    def forward(self, sr, hr):
+    def forward(self, sr, hr, discriminator_output=None):
         loss_l1 = self.l1_loss(sr, hr)
 
         sr_rgb = sr[:, [2, 1, 0], :, :]
@@ -103,12 +108,21 @@ class TerraSharpLoss(nn.Module):
             + self.ndvi_weight * loss_ndvi
         )
 
+        loss_gan_adversarial = 0.0
+        if discriminator_output is not None:
+            # LSGAN generator objective: D(G(z)) should be judged as real (target 1.0)
+            # The required map is scalar patch prediction map; MSE is the stable formulation.
+            target = torch.ones_like(discriminator_output)
+            loss_gan_adversarial = self.mse_loss(discriminator_output, target)
+            total_loss = total_loss + self.adversarial_weight * loss_gan_adversarial
+
         loss_dict = {
             "loss_total": total_loss.item(),
             "loss_l1": loss_l1.item(),
             "loss_perceptual": loss_perceptual.item(),
             "loss_edge": loss_edge.item(),
-            "loss_ndvi": loss_ndvi.item()
+            "loss_ndvi": loss_ndvi.item(),
+            "loss_gan_adversarial": loss_gan_adversarial.item() if isinstance(loss_gan_adversarial, torch.Tensor) else float(loss_gan_adversarial),
         }
 
         return total_loss, loss_dict

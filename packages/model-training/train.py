@@ -10,6 +10,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from model_arch import SwinIRLight
 from losses import TerraSharpLoss
 from dataset import Sentinel2WaldDataset
+from discriminator import PatchGANDiscriminator
 
 
 def parse_args():
@@ -17,6 +18,10 @@ def parse_args():
     parser.add_argument("--config", type=str, default="config.yaml", help="Path to config.yaml")
     parser.add_argument("--resume", type=str, default=None, help="Path to a checkpoint file to resume from")
     parser.add_argument("--start_epoch", type=int, default=1, help="Epoch to start from when resuming")
+    parser.add_argument("--use_gan", action="store_true", default=False,
+                        help="Enable optional GAN adversarial training path while keeping the supervised-only path available.")
+    parser.add_argument("--gan_weight", type=float, default=None,
+                        help="Override the adversarial LSGAN weight from the config.yaml file.")
     return parser.parse_args()
 
 
@@ -33,6 +38,12 @@ def load_config(config_path):
 def train():
     args = parse_args()
     config = load_config(args.config)
+
+    # Optional GAN config defaults remain in config.yaml and are additive.
+    gan_cfg = config.get("gan", {}) if isinstance(config.get("gan"), dict) else {}
+    gan_weight_default = float(gan_cfg.get("adversarial_weight", 0.005))
+    if args.gan_weight is not None:
+        gan_weight_default = args.gan_weight
 
     cuda_available = torch.cuda.is_available()
     device = torch.device("cuda" if cuda_available else "cpu")
@@ -57,18 +68,32 @@ def train():
         upscale=m_cfg.get("upscale", 4)
     ).to(device)
 
+    t_cfg = config.get("training", {})
+    lr = float(t_cfg.get("lr", 0.0002))
+
     l_cfg = config.get("loss", {})
     criterion = TerraSharpLoss(
         l1_weight=l_cfg.get("l1_weight", 1.0),
         perceptual_weight=l_cfg.get("perceptual_weight", 0.1),
         edge_weight=l_cfg.get("edge_weight", 0.5),
-        ndvi_weight=l_cfg.get("ndvi_weight", 0.3)
+        ndvi_weight=l_cfg.get("ndvi_weight", 0.3),
+        adversarial_weight=gan_weight_default,
+        use_adversarial=args.use_gan,
     ).to(device)
 
-    t_cfg = config.get("training", {})
+    discriminator = None
+    discriminator_optimizer = None
+    if args.use_gan:
+        discriminator = PatchGANDiscriminator(in_chans=m_cfg.get("in_chans", 4)).to(device)
+        discriminator_lr = max(lr * 0.5, 0.00001)
+        discriminator_optimizer = AdamW(
+            discriminator.parameters(),
+            lr=discriminator_lr,
+            weight_decay=float(t_cfg.get("weight_decay", 0.0001))
+        )
+
     epochs = t_cfg.get("epochs", 50)
     batch_size = t_cfg.get("batch_size", 8)
-    lr = float(t_cfg.get("lr", 0.0002))
     min_lr = float(t_cfg.get("min_lr", 0.00001))
     weight_decay = float(t_cfg.get("weight_decay", 0.0001))
     grad_clip_norm = float(t_cfg.get("grad_clip_norm", config.get("grad_clip_norm", 1.0)))
@@ -152,30 +177,75 @@ def train():
     for epoch in range(start_epoch, epochs + 1):
         epoch_start = time.time()
         model.train()
+        if discriminator is not None:
+            discriminator.train()
         train_loss_total = 0.0
         train_loss_l1 = 0.0
         train_loss_perceptual = 0.0
         train_loss_edge = 0.0
         train_loss_ndvi = 0.0
+        train_loss_gan = 0.0
         train_batches = 0
+        train_disc_loss = 0.0
+        generator_step = 0
 
         for batch in train_loader:
             lr_imgs = batch["lr"].to(device)
             hr_imgs = batch["hr"].to(device)
 
-            optimizer.zero_grad()
-            sr_imgs = model(lr_imgs)
-            loss, loss_dict = criterion(sr_imgs, hr_imgs)
-            loss.backward()
+            if args.use_gan and discriminator is not None and discriminator_optimizer is not None:
+                # One discriminator update every two generator steps.
+                # On odd generator steps, skip the discriminator update but still
+                # let the generator see the discriminator's last state.
+                optimizer.zero_grad()
+                sr_imgs = model(lr_imgs)
 
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
-            if epoch == 1 and ((train_batches + 1) == 1 or (train_batches + 1) % 50 == 0):
-                print(
-                    f"  [Epoch 1 | Step {train_batches + 1:03d}] Pre-clip Gradient Norm: {grad_norm.item():.4f} (clip limit: {grad_clip_norm})",
-                    flush=True
-                )
+                disc_loss = None
+                if generator_step % 2 == 0:
+                    discriminator_optimizer.zero_grad()
+                    real_logits = discriminator(hr_imgs)
+                    fake_logits = discriminator(sr_imgs.detach())
+                    real_target = torch.full_like(real_logits, 0.9)
+                    fake_target = torch.zeros_like(fake_logits)
+                    disc_real_loss = torch.nn.functional.mse_loss(real_logits, real_target)
+                    disc_fake_loss = torch.nn.functional.mse_loss(fake_logits, fake_target)
+                    disc_loss = 0.5 * (disc_real_loss + disc_fake_loss)
+                    disc_loss.backward()
+                    discriminator_optimizer.step()
 
-            optimizer.step()
+                # Generator loss with current discriminator judgment every step.
+                optimizer.zero_grad()
+                sr_imgs = model(lr_imgs)
+                fake_logits_gen = discriminator(sr_imgs)
+                loss, loss_dict = criterion(sr_imgs, hr_imgs, discriminator_output=fake_logits_gen)
+                loss.backward()
+
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+                if epoch == 1 and ((train_batches + 1) == 1 or (train_batches + 1) % 50 == 0):
+                    print(
+                        f"  [Epoch 1 | Step {train_batches + 1:03d}] Pre-clip Gradient Norm: {grad_norm.item():.4f} (clip limit: {grad_clip_norm})",
+                        flush=True
+                    )
+
+                optimizer.step()
+                if disc_loss is not None:
+                    train_disc_loss += disc_loss.item()
+                train_loss_gan += loss_dict.get("loss_gan_adversarial", 0.0)
+                generator_step += 1
+            else:
+                optimizer.zero_grad()
+                sr_imgs = model(lr_imgs)
+                loss, loss_dict = criterion(sr_imgs, hr_imgs)
+                loss.backward()
+
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+                if epoch == 1 and ((train_batches + 1) == 1 or (train_batches + 1) % 50 == 0):
+                    print(
+                        f"  [Epoch 1 | Step {train_batches + 1:03d}] Pre-clip Gradient Norm: {grad_norm.item():.4f} (clip limit: {grad_clip_norm})",
+                        flush=True
+                    )
+
+                optimizer.step()
 
             train_loss_total += loss_dict["loss_total"]
             train_loss_l1 += loss_dict["loss_l1"]
@@ -187,6 +257,8 @@ def train():
         scheduler.step()
 
         model.eval()
+        if discriminator is not None:
+            discriminator.eval()
         val_loss_total = 0.0
         val_batches = 0
         with torch.no_grad():
@@ -194,7 +266,11 @@ def train():
                 lr_imgs = batch["lr"].to(device)
                 hr_imgs = batch["hr"].to(device)
                 sr_imgs = model(lr_imgs)
-                v_loss, _ = criterion(sr_imgs, hr_imgs)
+                if args.use_gan and discriminator is not None:
+                    # Validation remains supervised-only as a stable metric path.
+                    v_loss, _ = criterion(sr_imgs, hr_imgs)
+                else:
+                    v_loss, _ = criterion(sr_imgs, hr_imgs)
                 val_loss_total += v_loss.item()
                 val_batches += 1
 
@@ -203,15 +279,24 @@ def train():
         avg_perc = train_loss_perceptual / max(train_batches, 1)
         avg_edge = train_loss_edge / max(train_batches, 1)
         avg_ndvi = train_loss_ndvi / max(train_batches, 1)
+        avg_gan = train_loss_gan / max(train_batches, 1)
+        avg_disc_loss = train_disc_loss / max(train_batches, 1)
         avg_val_loss = val_loss_total / max(val_batches, 1)
 
         current_lr = scheduler.get_last_lr()[0]
         epoch_duration = time.time() - epoch_start
-        print(
-            f"Epoch [{epoch:03d}/{epochs:03d}] | Time: {epoch_duration:.2f}s | LR: {current_lr:.6f} | "
-            f"Train Total: {avg_train_loss:.4f} (L1: {avg_l1:.4f}, VGG: {avg_perc:.4f}, Edge: {avg_edge:.4f}, NDVI: {avg_ndvi:.4f}) | "
-            f"Val Total: {avg_val_loss:.4f}"
-        )
+        if args.use_gan:
+            print(
+                f"Epoch [{epoch:03d}/{epochs:03d}] | Time: {epoch_duration:.2f}s | LR: {current_lr:.6f} | "
+                f"Train Total: {avg_train_loss:.4f} (L1: {avg_l1:.4f}, VGG: {avg_perc:.4f}, Edge: {avg_edge:.4f}, NDVI: {avg_ndvi:.4f}, GANAdv: {avg_gan:.4f}) | "
+                f"Disc Loss: {avg_disc_loss:.4f} | Val Total: {avg_val_loss:.4f}"
+            )
+        else:
+            print(
+                f"Epoch [{epoch:03d}/{epochs:03d}] | Time: {epoch_duration:.2f}s | LR: {current_lr:.6f} | "
+                f"Train Total: {avg_train_loss:.4f} (L1: {avg_l1:.4f}, VGG: {avg_perc:.4f}, Edge: {avg_edge:.4f}, NDVI: {avg_ndvi:.4f}) | "
+                f"Val Total: {avg_val_loss:.4f}"
+            )
 
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss

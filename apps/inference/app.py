@@ -22,7 +22,7 @@ if script_dir not in sys.path:
 from config import settings
 from src.model import ONNXInferenceEngine
 from src.preprocess import normalize_reflectance, create_tiling_plan
-from src.postprocess import reassemble_tiles, compute_all_metrics, save_preview_pngs
+from src.postprocess import reassemble_tiles, compute_all_metrics, save_preview_pngs, apply_unsharp_mask
 from src.spectral_metrics import match_spatial_dims
 from src.edge_metrics import get_edge_maps
 from src.geotiff_utils import read_geotiff, write_geotiff, write_uncertainty_geotiff
@@ -140,9 +140,10 @@ def run_super_resolution_pipeline(file_bytes: bytes, job_id: str, request_start:
     uncertainty_tif_path = os.path.join(job_dir, "uncertainty.tif")
 
     geotiff_start = time.time()
+    enhanced_sr_full = apply_unsharp_mask(sr_full)
     write_geotiff(
         enhanced_tif_path,
-        sr_full,
+        enhanced_sr_full,
         profile,
         upscale_factor=settings.UPSCALE_FACTOR
     )

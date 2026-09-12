@@ -1,0 +1,47 @@
+model:
+  in_chans: 4
+  out_chans: 4
+  embed_dim: 64
+  depths: [2, 2]
+  num_heads: [4, 4]
+  window_size: 8
+  mlp_ratio: 2.0
+  upscale: 4
+
+dataset:
+  train_hr_dir: "datasets/samples/train/hr"
+  train_lr_dir: "datasets/samples/train/lr"
+  val_hr_dir: "datasets/samples/val/hr"
+  val_lr_dir: "datasets/samples/val/lr"
+  hr_size: 256
+  lr_size: 64
+  scale: 4
+  blur_kernel_size: 5
+  blur_sigma: 1.2
+  num_workers: 2
+
+training:
+  epochs: 8
+  batch_size: 8
+  lr: 0.00002
+  min_lr: 0.000001
+  weight_decay: 0.0001
+  grad_clip_norm: 1.0
+  checkpoint_dir: "packages/model-training/checkpoints"
+  checkpoint_name: "best.pth"
+  save_every: 5
+
+loss:
+  l1_weight: 1.0
+  perceptual_weight: 0.1
+  edge_weight: 0.5
+  ndvi_weight: 0.3
+
+gan:
+  adversarial_weight: 0.005
+
+export:
+  checkpoint_path: "packages/model-training/checkpoints/best.pth"
+  onnx_path: "terrasharp_swinir_sentinel2.onnx"
+  quant_path: "terrasharp_swinir_sentinel2_int8.onnx"
+  opset_version: 17

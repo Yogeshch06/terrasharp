@@ -2,8 +2,9 @@ import os
 import time
 from typing import List, Dict, Any
 import numpy as np
+import yaml
 from PIL import Image
-from scipy.ndimage import zoom
+from scipy.ndimage import gaussian_filter, zoom
 
 from spectral_metrics import (
     psnr_per_band,
@@ -14,6 +15,44 @@ from spectral_metrics import (
     ndwi_preservation_score
 )
 from edge_metrics import compute_edge_preservation, get_edge_maps
+
+
+CONFIG_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config.yaml'))
+
+def _read_postprocess_config() -> dict:
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, 'r', encoding='utf-8') as fp:
+            data = yaml.safe_load(fp) or {}
+        post = data.get('postprocess', {}) if isinstance(data, dict) else {}
+        unsharp = post.get('unsharp', {}) if isinstance(post, dict) else {}
+        return {
+            'strength': float(unsharp.get('strength', 0.5)),
+            'sigma': float(unsharp.get('sigma', 1.0)),
+        }
+    return {'strength': 0.5, 'sigma': 1.0}
+
+
+def apply_unsharp_mask(sr_output: np.ndarray) -> np.ndarray:
+    """Apply a lightweight per-band unsharp-mask sharpening to SR output.
+
+    Formula:
+        blurred = gaussian_filter(sr_output, sigma=1.0)
+        sharpened = sr_output + 0.5 * (sr_output - blurred)
+    """
+    cfg = _read_postprocess_config()
+    strength = float(cfg.get('strength', 0.5))
+    sigma = float(cfg.get('sigma', 1.0))
+
+    sr_output = np.clip(sr_output, 0.0, 1.0)
+    if sr_output.ndim != 3:
+        return sr_output
+
+    sharpened = np.empty_like(sr_output, dtype=np.float32)
+    for band in range(sr_output.shape[0]):
+        blurred = gaussian_filter(sr_output[band], sigma=sigma)
+        sharpened[band] = sr_output[band] + strength * (sr_output[band] - blurred)
+
+    return np.clip(sharpened, 0.0, 1.0)
 
 
 def _create_feather_mask(tile_h: int, tile_w: int, blend_width: int = 16) -> np.ndarray:
@@ -165,7 +204,7 @@ def save_preview_pngs(
     timings.append(("preview_before", prep_time, time.time() - save_start))
 
     prep_start = time.time()
-    preview_after = _rgb_preview(sr_full, sr_shape)
+    preview_after = _rgb_preview(apply_unsharp_mask(sr_full), sr_shape)
     prep_time = time.time() - prep_start
     save_start = time.time()
     _write_png(os.path.join(job_dir, "preview_after.png"), preview_after)
