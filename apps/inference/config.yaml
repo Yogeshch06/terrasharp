@@ -1,0 +1,4 @@
+postprocess:
+  unsharp:
+    strength: 0.2
+    sigma: 1.0
